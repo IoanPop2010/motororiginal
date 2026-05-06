@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>4-Stroke Engine</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0c10;
+    --panel: #0f1318;
+    --border: #1e2530;
+    --accent: #e8a020;
+    --accent2: #3a8fff;
+    --text: #c8d4e0;
+    --dim: #4a5568;
+    --intake-color: rgba(40, 120, 255, 0.85);
+    --exhaust-color: rgba(100, 110, 120, 0.7);
+    --fire-color: rgba(255, 160, 20, 0.9);
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Share Tech Mono', monospace;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 60% 40% at 50% 0%, rgba(232,160,32,0.06) 0%, transparent 70%),
+      radial-gradient(ellipse 40% 60% at 50% 100%, rgba(58,143,255,0.05) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  h1 {
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 900;
+    font-size: clamp(1rem, 3vw, 1.5rem);
+    letter-spacing: 0.35em;
+    color: var(--accent);
+    text-transform: uppercase;
+    margin-bottom: 1.5rem;
+    text-shadow: 0 0 30px rgba(232,160,32,0.4);
+  }
+
+  .layout {
+    display: flex;
+    gap: 2rem;
+    align-items: flex-start;
+  }
+
+  canvas {
+    display: block;
+    border: 1px solid var(--border);
+    background: var(--panel);
+    box-shadow:
+      0 0 0 1px rgba(232,160,32,0.08),
+      0 20px 60px rgba(0,0,0,0.6),
+      inset 0 0 60px rgba(0,0,0,0.4);
+  }
+
+  .sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    min-width: 180px;
+  }
+
+  .stroke-panel {
+    border: 1px solid var(--border);
+    padding: 0.8rem 1rem;
+    background: var(--panel);
+    transition: border-color 0.2s, box-shadow 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .stroke-panel::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    background: var(--stroke-color, var(--dim));
+    transition: background 0.3s;
+  }
+
+  .stroke-panel.active {
+    border-color: var(--stroke-color, var(--dim));
+    box-shadow: 0 0 20px var(--stroke-glow, transparent);
+  }
+
+  .stroke-panel .label {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.6rem;
+    letter-spacing: 0.2em;
+    color: var(--stroke-color, var(--dim));
+    text-transform: uppercase;
+    margin-bottom: 0.3rem;
+  }
+
+  .stroke-panel .name {
+    font-size: 0.85rem;
+    color: var(--text);
+    font-weight: bold;
+  }
+
+  .stroke-panel .desc {
+    font-size: 0.65rem;
+    color: var(--dim);
+    margin-top: 0.3rem;
+    line-height: 1.4;
+  }
+
+  .rpm-display {
+    border: 1px solid var(--border);
+    padding: 0.8rem 1rem;
+    background: var(--panel);
+    text-align: center;
+  }
+
+  .rpm-display .val {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: var(--accent);
+    text-shadow: 0 0 20px rgba(232,160,32,0.5);
+  }
+
+  .rpm-display .unit {
+    font-size: 0.6rem;
+    letter-spacing: 0.2em;
+    color: var(--dim);
+  }
+
+  .controls {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+  }
+
+  button {
+    flex: 1;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.7rem;
+    padding: 0.5rem;
+    cursor: pointer;
+    letter-spacing: 0.1em;
+    transition: all 0.15s;
+  }
+
+  button:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    box-shadow: 0 0 10px rgba(232,160,32,0.2);
+  }
+
+  input[type=range] {
+    width: 100%;
+    accent-color: var(--accent);
+    margin-top: 0.4rem;
+  }
+
+  .slider-label {
+    font-size: 0.65rem;
+    color: var(--dim);
+    letter-spacing: 0.1em;
+  }
+</style>
+</head>
+<body>
+
+<h1>4-Stroke Cycle Engine</h1>
+
+<div class="layout">
+  <canvas id="c" width="340" height="500"></canvas>
+
+  <div class="sidebar">
+    <div class="rpm-display">
+      <div class="val" id="rpm-val">750</div>
+      <div class="unit">RPM</div>
+    </div>
+
+    <div id="sp0" class="stroke-panel" style="--stroke-color:#3a8fff;--stroke-glow:rgba(58,143,255,0.25)">
+      <div class="label">Stroke 1</div>
+      <div class="name">INTAKE</div>
+      <div class="desc">Piston descends. Intake valve opens. Air-fuel mixture drawn in.</div>
+    </div>
+
+    <div id="sp1" class="stroke-panel" style="--stroke-color:#c0c8d0;--stroke-glow:rgba(192,200,208,0.15)">
+      <div class="label">Stroke 2</div>
+      <div class="name">COMPRESSION</div>
+      <div class="desc">Both valves closed. Piston rises. Mixture compressed.</div>
+    </div>
+
+    <div id="sp2" class="stroke-panel" style="--stroke-color:#e8a020;--stroke-glow:rgba(232,160,32,0.3)">
+      <div class="label">Stroke 3</div>
+      <div class="name">POWER</div>
+      <div class="desc">Spark ignites mixture. Combustion forces piston down.</div>
+    </div>
+
+    <div id="sp3" class="stroke-panel" style="--stroke-color:#8aaa7a;--stroke-glow:rgba(138,170,122,0.2)">
+      <div class="label">Stroke 4</div>
+      <div class="name">EXHAUST</div>
+      <div class="desc">Exhaust valve opens. Piston rises. Burnt gases expelled.</div>
+    </div>
+
+    <div>
+      <div class="slider-label">SPEED</div>
+      <input type="range" id="speed" min="0.3" max="3" step="0.1" value="1">
+    </div>
+
+    <div class="controls">
+      <button id="btn-pause">PAUSE</button>
+      <button id="btn-step">STEP</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const W = canvas.width, H = canvas.height;
+
+// ── Geometry ──────────────────────────────────────────────────────────────────
+const CX = W / 2;           // cylinder center x
+const CRANK_Y = H - 80;     // crankshaft center y
+const CRANK_R = 52;         // crank throw radius
+const ROD_LEN = 120;        // connecting rod length
+const CYL_W = 90;           // cylinder inner half-width
+const CYL_TOP = 60;         // cylinder top y
+const PISTON_H = 36;
+const WALL = 10;            // cylinder wall thickness
+const VALVE_R = 10;
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let angle = Math.PI; // start at BDC
+let paused = false;
+let speedMult = 1;
+let stepOnce = false;
+const BASE_SPEED = 0.022; // rad per frame at 1x
+
+// Derived positions
+function pistonY(a) {
+  // Slider-crank: y of piston top from crank center
+  const cy = CRANK_R * Math.cos(a) + Math.sqrt(ROD_LEN * ROD_LEN - (CRANK_R * Math.sin(a)) ** 2);
+  return CRANK_Y - cy - PISTON_H;
+}
+
+// angle=0 → TDC (piston highest), angle=π → BDC (lowest)
+// Stroke index: based on angle in [0, 4π) cycle (2 revolutions = 1 full cycle)
+// We use a cycle angle 'ca' in [0, 4π)
+let cycleAngle = Math.PI; // start at BDC of intake
+
+function strokeFromCycleAngle(ca) {
+  const n = ((ca % (4 * Math.PI)) + 4 * Math.PI) % (4 * Math.PI);
+  if (n < Math.PI) return 0;        // Intake: π → 2π (piston going down)
+  if (n < 2 * Math.PI) return 1;    // Compression: 2π → 3π (piston going up)
+  if (n < 3 * Math.PI) return 2;    // Power: 3π → 4π (piston going down)
+  return 3;                          // Exhaust: 4π → 5π (piston going up)
+}
+
+// crankshaft angle from cycle angle
+function crankAngle(ca) {
+  return ca; // 1:1
+}
+
+// valve lift [0,1]
+function intakeValveLift(stroke, t) {
+  if (stroke === 0) return Math.sin(t * Math.PI) * 0.95 + 0.05;
+  return 0;
+}
+function exhaustValveLift(stroke, t) {
+  if (stroke === 3) return Math.sin(t * Math.PI) * 0.95 + 0.05;
+  return 0;
+}
+
+// stroke-local t [0,1]
+function strokeT(ca) {
+  const n = ((ca % (4 * Math.PI)) + 4 * Math.PI) % (4 * Math.PI);
+  return (n % Math.PI) / Math.PI;
+}
+
+// ── Colors ─────────────────────────────────────────────────────────────────────
+const STROKE_COLORS = [
+  { gas: [40, 130, 255], name: 'intake' },
+  { gas: [180, 190, 200], name: 'compression' },
+  { gas: [255, 140, 20], name: 'power' },
+  { gas: [120, 130, 110], name: 'exhaust' },
+];
+
+function gasAlpha(stroke, t) {
+  if (stroke === 0) return 0.15 + 0.15 * t;
+  if (stroke === 1) return 0.28 + 0.18 * t;
+  if (stroke === 2) return 0.55 - 0.35 * t;
+  return 0.2 - 0.1 * t;
+}
+
+// ── Drawing helpers ────────────────────────────────────────────────────────────
+function roundRect(x, y, w, h, r, fill, stroke_s) {
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, r);
+  if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+  if (stroke_s) { ctx.strokeStyle = stroke_s; ctx.stroke(); }
+}
+
+function drawGradRect(x, y, w, h, c1, c2, vertical = true) {
+  const g = vertical
+    ? ctx.createLinearGradient(x, y, x, y + h)
+    : ctx.createLinearGradient(x, y, x + w, y);
+  g.addColorStop(0, c1);
+  g.addColorStop(1, c2);
+  ctx.fillStyle = g;
+  ctx.fillRect(x, y, w, h);
+}
+
+// ── Flame / spark ─────────────────────────────────────────────────────────────
+let sparkAnim = 0; // 0 = none, 1 = full
+function drawFlame(pyTop, stroke, t) {
+  if (stroke !== 2) { sparkAnim = 0; return; }
+  if (t < 0.05) sparkAnim = Math.min(1, sparkAnim + 0.15);
+  else sparkAnim = Math.max(0, sparkAnim - 0.03);
+
+  if (sparkAnim < 0.01) return;
+
+  const chamberH = pyTop - CYL_TOP - 10;
+  if (chamberH < 5) return;
+
+  const a = sparkAnim;
+  const cx2 = CX, cy2 = CYL_TOP + chamberH * 0.5;
+  const numPetals = 7;
+
+  for (let i = 0; i < numPetals; i++) {
+    const ang = (i / numPetals) * Math.PI * 2 + Date.now() * 0.002;
+    const r = (12 + Math.random() * 10) * a;
+    const x2 = cx2 + Math.cos(ang) * r * 0.7;
+    const y2 = cy2 + Math.sin(ang) * r * 0.5;
+    const grad = ctx.createRadialGradient(cx2, cy2, 0, cx2, cy2, r * 1.2);
+    grad.addColorStop(0, `rgba(255,255,200,${0.9 * a})`);
+    grad.addColorStop(0.3, `rgba(255,160,20,${0.7 * a})`);
+    grad.addColorStop(1, `rgba(255,60,0,0)`);
+    ctx.beginPath();
+    ctx.arc(x2, y2, r, 0, Math.PI * 2);
+    ctx.fillStyle = grad;
+    ctx.fill();
+  }
+
+  // central bright core
+  const cg = ctx.createRadialGradient(cx2, cy2, 0, cx2, cy2, 18 * a);
+  cg.addColorStop(0, `rgba(255,255,255,${a})`);
+  cg.addColorStop(0.5, `rgba(255,200,50,${0.6 * a})`);
+  cg.addColorStop(1, 'rgba(255,100,0,0)');
+  ctx.beginPath();
+  ctx.arc(cx2, cy2, 18 * a, 0, Math.PI * 2);
+  ctx.fillStyle = cg;
+  ctx.fill();
+}
+
+// Spark plug arc
+function drawSpark(stroke, t) {
+  if (stroke !== 2 || t > 0.08) return;
+  const x0 = CX + 24, y0 = CYL_TOP + 10;
+  ctx.save();
+  ctx.strokeStyle = `rgba(200,220,255,${1 - t / 0.08})`;
+  ctx.lineWidth = 1.5;
+  ctx.shadowColor = '#88aaff';
+  ctx.shadowBlur = 8;
+  ctx.beginPath();
+  ctx.moveTo(x0, y0 + 2);
+  ctx.lineTo(x0 - 3, y0 + 7);
+  ctx.lineTo(x0 + 3, y0 + 10);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// ── Valve drawing ──────────────────────────────────────────────────────────────
+function drawValve(isIntake, lift) {
+  const vx = isIntake ? CX - CYL_W + VALVE_R + 4 : CX + CYL_W - VALVE_R - 4;
+  const stemH = 28;
+  const openY = CYL_TOP - stemH * lift;
+
+  ctx.save();
+  // Stem
+  ctx.strokeStyle = '#aabbcc';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(vx, CYL_TOP - stemH);
+  ctx.lineTo(vx, openY + VALVE_R);
+  ctx.stroke();
+
+  // Head (disk)
+  ctx.beginPath();
+  ctx.ellipse(vx, openY + VALVE_R, VALVE_R, 5, 0, 0, Math.PI * 2);
+  const g = ctx.createLinearGradient(vx - VALVE_R, openY, vx + VALVE_R, openY + 10);
+  g.addColorStop(0, '#c8d8e8');
+  g.addColorStop(1, '#607080');
+  ctx.fillStyle = g;
+  ctx.fill();
+  ctx.strokeStyle = '#334';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+// ── Gas in cylinder ────────────────────────────────────────────────────────────
+function drawGas(pyTop, stroke, t) {
+  const col = STROKE_COLORS[stroke].gas;
+  const alpha = gasAlpha(stroke, t);
+  const chamberTop = CYL_TOP;
+  const gasH = pyTop - chamberTop;
+  if (gasH < 2) return;
+
+  // Base fill
+  ctx.fillStyle = `rgba(${col[0]},${col[1]},${col[2]},${alpha})`;
+  ctx.fillRect(CX - CYL_W + 1, chamberTop, CYL_W * 2 - 2, gasH);
+
+  // Turbulence shimmer lines
+  if (stroke === 1 || stroke === 2) {
+    ctx.save();
+    ctx.globalAlpha = 0.12 + 0.08 * Math.sin(Date.now() * 0.003);
+    ctx.strokeStyle = `rgb(${col[0]},${col[1]},${col[2]})`;
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 3; i++) {
+      const ly = chamberTop + (gasH * (i + 1)) / 4 + Math.sin(Date.now() * 0.004 + i) * 3;
+      ctx.beginPath();
+      ctx.moveTo(CX - CYL_W + 4, ly);
+      ctx.lineTo(CX + CYL_W - 4, ly);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+}
+
+// ── Connecting rod ─────────────────────────────────────────────────────────────
+function drawRod(px, py, cx2, cy2) {
+  const dx = cx2 - px, dy = cy2 - py;
+  const len = Math.sqrt(dx * dx + dy * dy);
+  const ux = dx / len, uy = dy / len;
+  const perp = 5;
+
+  ctx.save();
+  // Rod body
+  const g = ctx.createLinearGradient(px, py, cx2, cy2);
+  g.addColorStop(0, '#5a6a7a');
+  g.addColorStop(0.5, '#8a9aaa');
+  g.addColorStop(1, '#4a5a6a');
+  ctx.strokeStyle = g;
+  ctx.lineWidth = 10;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(px, py);
+  ctx.lineTo(cx2, cy2);
+  ctx.stroke();
+
+  // Edge highlight
+  ctx.strokeStyle = 'rgba(180,200,220,0.3)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(px - uy * perp, py + ux * perp);
+  ctx.lineTo(cx2 - uy * perp, cy2 + ux * perp);
+  ctx.stroke();
+
+  // Big end (crank pin)
+  ctx.beginPath();
+  ctx.arc(cx2, cy2, 10, 0, Math.PI * 2);
+  const bg = ctx.createRadialGradient(cx2 - 2, cy2 - 2, 1, cx2, cy2, 10);
+  bg.addColorStop(0, '#b0c0d0');
+  bg.addColorStop(1, '#304050');
+  ctx.fillStyle = bg;
+  ctx.fill();
+  ctx.strokeStyle = '#223';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // Small end (piston pin)
+  ctx.beginPath();
+  ctx.arc(px, py, 7, 0, Math.PI * 2);
+  ctx.fillStyle = bg;
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+// ── Crankshaft ────────────────────────────────────────────────────────────────
+function drawCrank(a, pinX, pinY) {
+  ctx.save();
+
+  // Main journal
+  ctx.beginPath();
+  ctx.arc(CX, CRANK_Y, 18, 0, Math.PI * 2);
+  const jg = ctx.createRadialGradient(CX - 4, CRANK_Y - 4, 2, CX, CRANK_Y, 18);
+  jg.addColorStop(0, '#8a9aaa');
+  jg.addColorStop(1, '#1a2530');
+  ctx.fillStyle = jg;
+  ctx.fill();
+  ctx.strokeStyle = '#334455';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Crank arms
+  ctx.strokeStyle = '#607080';
+  ctx.lineWidth = 12;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(CX, CRANK_Y);
+  ctx.lineTo(pinX, pinY);
+  ctx.stroke();
+
+  // Counterweight (opposite side)
+  const cwX = CX - (pinX - CX) * 0.7;
+  const cwY = CRANK_Y - (pinY - CRANK_Y) * 0.7;
+  ctx.strokeStyle = '#405060';
+  ctx.lineWidth = 16;
+  ctx.beginPath();
+  ctx.moveTo(CX, CRANK_Y);
+  ctx.lineTo(cwX, cwY);
+  ctx.stroke();
+
+  // Crank pin
+  ctx.beginPath();
+  ctx.arc(pinX, pinY, 9, 0, Math.PI * 2);
+  const pg2 = ctx.createRadialGradient(pinX - 2, pinY - 2, 1, pinX, pinY, 9);
+  pg2.addColorStop(0, '#c0d0e0');
+  pg2.addColorStop(1, '#304050');
+  ctx.fillStyle = pg2;
+  ctx.fill();
+  ctx.strokeStyle = '#223';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // Center dot
+  ctx.beginPath();
+  ctx.arc(CX, CRANK_Y, 4, 0, Math.PI * 2);
+  ctx.fillStyle = '#f0f0f0';
+  ctx.fill();
+
+  ctx.restore();
+}
+
+// ── Piston ────────────────────────────────────────────────────────────────────
+function drawPiston(py) {
+  const pw = CYL_W * 2 - 14;
+  const px = CX - pw / 2;
+
+  ctx.save();
+
+  // Piston body
+  const g = ctx.createLinearGradient(px, py, px + pw, py);
+  g.addColorStop(0, '#3a4a5a');
+  g.addColorStop(0.15, '#7a8a9a');
+  g.addColorStop(0.5, '#aabbc8');
+  g.addColorStop(0.85, '#7a8a9a');
+  g.addColorStop(1, '#3a4a5a');
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.roundRect(px, py, pw, PISTON_H, [4, 4, 6, 6]);
+  ctx.fill();
+
+  // Ring grooves (3 rings)
+  const ringOffsets = [6, 14, 22];
+  ringOffsets.forEach(ro => {
+    ctx.strokeStyle = '#1a2530';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(px + 2, py + ro);
+    ctx.lineTo(px + pw - 2, py + ro);
+    ctx.stroke();
+
+    ctx.strokeStyle = 'rgba(180,200,220,0.4)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(px + 2, py + ro + 1.5);
+    ctx.lineTo(px + pw - 2, py + ro + 1.5);
+    ctx.stroke();
+  });
+
+  // Top face highlight
+  const tg = ctx.createLinearGradient(px, py, px, py + 4);
+  tg.addColorStop(0, 'rgba(200,220,240,0.5)');
+  tg.addColorStop(1, 'rgba(200,220,240,0)');
+  ctx.fillStyle = tg;
+  ctx.beginPath();
+  ctx.roundRect(px, py, pw, 4, [4, 4, 0, 0]);
+  ctx.fill();
+
+  // Wrist pin hole
+  ctx.beginPath();
+  ctx.arc(CX, py + PISTON_H - 12, 5, 0, Math.PI * 2);
+  ctx.fillStyle = '#1a2530';
+  ctx.fill();
+  ctx.strokeStyle = '#607080';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+// ── Cylinder body ─────────────────────────────────────────────────────────────
+function drawCylinder() {
+  const wallL = CX - CYL_W - WALL;
+  const wallR = CX + CYL_W;
+  const wallH = CRANK_Y - CYL_TOP + 20;
+
+  ctx.save();
+
+  // Left wall
+  const lg = ctx.createLinearGradient(wallL, 0, wallL + WALL, 0);
+  lg.addColorStop(0, '#1a2530');
+  lg.addColorStop(0.3, '#3a4a5a');
+  lg.addColorStop(1, '#2a3540');
+  ctx.fillStyle = lg;
+  ctx.fillRect(wallL, CYL_TOP, WALL, wallH);
+
+  // Right wall
+  const rg = ctx.createLinearGradient(wallR, 0, wallR + WALL, 0);
+  rg.addColorStop(0, '#2a3540');
+  rg.addColorStop(0.7, '#3a4a5a');
+  rg.addColorStop(1, '#1a2530');
+  ctx.fillStyle = rg;
+  ctx.fillRect(wallR, CYL_TOP, WALL, wallH);
+
+  // Cylinder head (top)
+  const headH = 22;
+  const hg = ctx.createLinearGradient(wallL, CYL_TOP - headH, wallL, CYL_TOP);
+  hg.addColorStop(0, '#2a3a4a');
+  hg.addColorStop(1, '#1a2530');
+  ctx.fillStyle = hg;
+  ctx.beginPath();
+  ctx.roundRect(wallL, CYL_TOP - headH, CYL_W * 2 + WALL * 2, headH, [6, 6, 0, 0]);
+  ctx.fill();
+
+  // Bolt details on head
+  [-1, 1].forEach(side => {
+    const bx = CX + side * (CYL_W + 4);
+    for (let i = 0; i < 2; i++) {
+      ctx.beginPath();
+      ctx.arc(bx, CYL_TOP - headH + 6 + i * 10, 3, 0, Math.PI * 2);
+      ctx.fillStyle = '#4a5a6a';
+      ctx.fill();
+      ctx.strokeStyle = '#607080';
+      ctx.lineWidth = 0.5;
+      ctx.stroke();
+    }
+  });
+
+  // Cooling fins
+  for (let i = 0; i < 6; i++) {
+    const fy = CYL_TOP + 20 + i * 28;
+    const finW = 6;
+    ctx.fillStyle = '#2a3a4a';
+    ctx.fillRect(wallL - finW, fy, finW, 10);
+    ctx.fillRect(wallR + WALL, fy, finW, 10);
+
+    ctx.fillStyle = '#354555';
+    ctx.fillRect(wallL - finW - 2, fy + 1, 3, 8);
+    ctx.fillRect(wallR + WALL + finW - 1, fy + 1, 3, 8);
+  }
+
+  // Spark plug
+  const spx = CX + CYL_W - 2;
+  const spy = CYL_TOP + 8;
+  ctx.fillStyle = '#607080';
+  ctx.fillRect(spx, spy - 14, 8, 14);
+  ctx.beginPath();
+  ctx.arc(spx + 4, spy, 4, 0, Math.PI * 2);
+  ctx.fillStyle = '#304050';
+  ctx.fill();
+  ctx.strokeStyle = '#a0b0c0';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  // insulator (white ceramic)
+  ctx.fillStyle = '#d0e0f0';
+  ctx.fillRect(spx + 2, spy - 18, 4, 10);
+
+  // Inner wall lines / polish marks
+  ctx.strokeStyle = 'rgba(180,200,220,0.06)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i < 4; i++) {
+    const lx = CX - CYL_W + 8 + i * (CYL_W * 2 - 16) / 3;
+    ctx.beginPath();
+    ctx.moveTo(lx, CYL_TOP);
+    ctx.lineTo(lx, CRANK_Y);
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
+// ── Crankcase ─────────────────────────────────────────────────────────────────
+function drawCrankcase() {
+  const ccW = CYL_W + WALL + 30;
+  const ccTop = CRANK_Y - 30;
+  const ccH = H - ccTop - 10;
+
+  ctx.save();
+  const cg = ctx.createLinearGradient(CX - ccW, ccTop, CX + ccW, ccTop + ccH);
+  cg.addColorStop(0, '#101820');
+  cg.addColorStop(0.5, '#1a2530');
+  cg.addColorStop(1, '#101820');
+  ctx.fillStyle = cg;
+  ctx.beginPath();
+  ctx.roundRect(CX - ccW, ccTop, ccW * 2, ccH, [0, 0, 10, 10]);
+  ctx.fill();
+
+  ctx.strokeStyle = '#2a3a4a';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.roundRect(CX - ccW, ccTop, ccW * 2, ccH, [0, 0, 10, 10]);
+  ctx.stroke();
+
+  // Oil pan shine
+  const og = ctx.createLinearGradient(CX - ccW, ccTop + ccH - 20, CX + ccW, ccTop + ccH);
+  og.addColorStop(0, 'rgba(40,60,80,0.5)');
+  og.addColorStop(1, 'rgba(20,30,40,0)');
+  ctx.fillStyle = og;
+  ctx.fillRect(CX - ccW, ccTop + ccH - 20, ccW * 2, 20);
+
+  ctx.restore();
+}
+
+// ── Exhaust / intake ports ────────────────────────────────────────────────────
+function drawExhaustPuff(stroke, t, exhaustLift) {
+  if (stroke !== 3 || exhaustLift < 0.05) return;
+
+  const ex = CX - CYL_W - WALL - 10;
+  const ey = CYL_TOP + 5;
+
+  ctx.save();
+  for (let i = 0; i < 4; i++) {
+    const progress = (t + i * 0.25) % 1;
+    const r = 8 + progress * 20;
+    const alpha = exhaustLift * (1 - progress) * 0.4;
+    const ox = ex - progress * 25;
+    const oy = ey - progress * 10;
+    ctx.beginPath();
+    ctx.arc(ox, oy, r, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(120,130,120,${alpha})`;
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawIntakeFlow(stroke, t, intakeLift) {
+  if (stroke !== 0 || intakeLift < 0.05) return;
+
+  const ix = CX + CYL_W + WALL + 10;
+  const iy = CYL_TOP + 5;
+
+  ctx.save();
+  for (let i = 0; i < 4; i++) {
+    const progress = (t + i * 0.25) % 1;
+    const r = 4 + progress * 10;
+    const alpha = intakeLift * (1 - progress) * 0.35;
+    const ox = ix + progress * 20;
+    const oy = iy - progress * 5;
+    ctx.beginPath();
+    ctx.arc(ox, oy, r, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(60,140,255,${alpha})`;
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+// ── HUD / labels ──────────────────────────────────────────────────────────────
+function drawHUD(stroke, t) {
+  const names = ['INTAKE', 'COMPRESSION', 'POWER', 'EXHAUST'];
+  const colors = ['#3a8fff', '#c0c8d0', '#e8a020', '#8aaa7a'];
+
+  ctx.save();
+  ctx.font = '700 11px Orbitron, monospace';
+  ctx.fillStyle = colors[stroke];
+  ctx.globalAlpha = 0.9;
+  ctx.textAlign = 'center';
+  ctx.fillText(names[stroke], CX, H - 12);
+
+  // Progress bar
+  const barW = CYL_W * 2;
+  const barX = CX - barW / 2;
+  const barY = H - 6;
+  ctx.fillStyle = 'rgba(255,255,255,0.05)';
+  ctx.fillRect(barX, barY - 2, barW, 3);
+  ctx.fillStyle = colors[stroke];
+  ctx.globalAlpha = 0.7;
+  ctx.fillRect(barX, barY - 2, barW * t, 3);
+
+  ctx.restore();
+}
+
+// ── Stroke panels update ───────────────────────────────────────────────────────
+const panels = [0, 1, 2, 3].map(i => document.getElementById(`sp${i}`));
+let lastStroke = -1;
+
+function updateUI(stroke, rpm) {
+  document.getElementById('rpm-val').textContent = Math.round(rpm);
+  if (stroke !== lastStroke) {
+    panels.forEach((p, i) => p.classList.toggle('active', i === stroke));
+    lastStroke = stroke;
+  }
+}
+
+// ── Main draw ─────────────────────────────────────────────────────────────────
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+
+  // Background
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, '#080c12');
+  bg.addColorStop(1, '#0c1018');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  const ca = cycleAngle;
+  const stroke = strokeFromCycleAngle(ca);
+  const t = strokeT(ca);
+  const crankA = crankAngle(ca);
+
+  // Crank pin position
+  const pinX = CX + CRANK_R * Math.sin(crankA);
+  const pinY = CRANK_Y - CRANK_R * Math.cos(crankA);
+
+  // Piston position
+  const py = pistonY(crankA);
+  const pistonPinY = py + PISTON_H - 12;
+  const pistonPinX = CX;
+
+  // Valve lifts
+  const iLift = intakeValveLift(stroke, t);
+  const eLift = exhaustValveLift(stroke, t);
+
+  // Draw order (back to front)
+  drawCrankcase();
+  drawCylinder();
+
+  // Gas in cylinder
+  drawGas(py, stroke, t);
+
+  // Flame
+  drawFlame(py, stroke, t);
+
+  // Exhaust / intake port effects
+  drawExhaustPuff(stroke, t, eLift);
+  drawIntakeFlow(stroke, t, iLift);
+
+  // Valves
+  drawValve(true, iLift);   // intake (left)
+  drawValve(false, eLift);  // exhaust (right)
+
+  // Spark
+  drawSpark(stroke, t);
+
+  // Connecting rod
+  drawRod(pistonPinX, pistonPinY, pinX, pinY);
+
+  // Piston
+  drawPiston(py);
+
+  // Crankshaft
+  drawCrank(crankA, pinX, pinY);
+
+  // HUD
+  drawHUD(stroke, t);
+
+  // RPM calculation (BASE_SPEED rad/frame * speedMult * 60fps * 60s / (4π per cycle) * 60)
+  const rpm = BASE_SPEED * speedMult * 60 * 60 / (4 * Math.PI) * 60;
+  updateUI(stroke, rpm);
+}
+
+// ── Animation loop ────────────────────────────────────────────────────────────
+function loop() {
+  if (!paused || stepOnce) {
+    cycleAngle += BASE_SPEED * speedMult;
+    stepOnce = false;
+  }
+  draw();
+  requestAnimationFrame(loop);
+}
+
+// ── Controls ───────────────────────────────────────────────────────────────────
+document.getElementById('speed').addEventListener('input', e => {
+  speedMult = parseFloat(e.target.value);
+});
+
+const btnPause = document.getElementById('btn-pause');
+btnPause.addEventListener('click', () => {
+  paused = !paused;
+  btnPause.textContent = paused ? 'PLAY' : 'PAUSE';
+});
+
+document.getElementById('btn-step').addEventListener('click', () => {
+  paused = true;
+  btnPause.textContent = 'PLAY';
+  stepOnce = true;
+});
+
+loop();
+</script>
+</body>
+</html>
