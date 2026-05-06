@@ -221,7 +221,7 @@
 
     <div>
       <div class="slider-label">SPEED</div>
-      <input type="range" id="speed" min="0.3" max="3" step="0.1" value="1">
+      <input type="range" id="speed" min="0" max="100" step="0.5" value="30">
     </div>
 
     <div class="controls">
@@ -892,8 +892,15 @@ function loop() {
 }
 
 // ── Controls ───────────────────────────────────────────────────────────────────
+function sliderToMult(val) {
+  // Logarithmic: slider 0-100 maps RPM 1-10000
+  const rpm = Math.pow(10, (val / 100) * 4);
+  return rpm * 4 * Math.PI / (BASE_SPEED * 216000);
+}
+speedMult = sliderToMult(30);
+
 document.getElementById('speed').addEventListener('input', e => {
-  speedMult = parseFloat(e.target.value);
+  speedMult = sliderToMult(parseFloat(e.target.value));
 });
 
 const btnPause = document.getElementById('btn-pause');
